@@ -282,33 +282,27 @@ shapes =
   , shape1
   ]
 
-rotate :: Direction -> Direction
-rotate X = Y
-rotate Y = Z
-rotate Z = X
-
-rotateShape :: Shape -> Shape
-rotateShape = map (map rotate)
-
 rotations :: Shape -> [Shape]
 rotations = take 3 . iterate rotateShape
-
-reflect :: Direction -> Direction -> Direction
-reflect X X = X
-reflect X Y = Z
-reflect X Z = Y
-reflect Y X = Z
-reflect Y Y = Y
-reflect Y Z = X
-reflect Z X = Y
-reflect Z Y = X
-reflect Z Z = Z
-
-reflectShape :: Direction -> Shape -> Shape
-reflectShape = map . map . reflect
+  where
+    rotateShape = map (map rotate)
+    rotate X = Y
+    rotate Y = Z
+    rotate Z = X
 
 reflections :: Shape -> [Shape]
 reflections shape = [reflectShape d shape | d <- [X, Y, Z]]
+  where
+    reflectShape = map . map . reflect
+    reflect X X = X
+    reflect X Y = Z
+    reflect X Z = Y
+    reflect Y X = Z
+    reflect Y Y = Y
+    reflect Y Z = X
+    reflect Z X = Y
+    reflect Z Y = X
+    reflect Z Z = Z
 
 walk :: Path -> Int -> Maybe Int
 walk [] n = Just n

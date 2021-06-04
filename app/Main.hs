@@ -1,8 +1,10 @@
 module Main where
 
-import Data.Maybe
-import Data.Set (Set)
+import Data.List (find, nub)
+import Data.Maybe (catMaybes, listToMaybe)
+import Data.Set (Set, (\\))
 import qualified Data.Set as Set
+import System.Environment (getArgs)
 
 data Direction = X | Y | Z deriving (Eq, Ord, Show)
 
@@ -200,69 +202,70 @@ neighbour X 48 = Nothing
 neighbour Y 48 = Nothing
 neighbour Z 48 = Just 46
 
-neighbour _ n = error $ "invalid cell number: " ++ show n
+neighbour _ n = error $ "invalid number: " ++ show n
 
 type Path = [Direction]
-type Shape = Set Path
+type Shape = [Path]
 
-shape1, shape2, shape3, shape4, shape5, shape6, shape7, shape9, shape10, shape11 :: Shape
+shape1, shape2, shape3, shape4, shape5,
+  shape6, shape7, shape9, shape10, shape11 :: Shape
 
 --  /\
 -- /*_\
-shape1 = Set.fromList [[]]
+shape1 = [[]]
 
 --   ____
 --  /\  /
 -- /*_\/
-shape2 = Set.fromList [[], [X]]
+shape2 = [[], [X]]
 
 --   ____
 --  /\* /\
 -- /__\/__\
-shape3 = Set.fromList [[], [X], [Y]]
-shape4 = Set.fromList [[], [X], [Y]]
+shape3 = [[], [X], [Y]]
+shape4 = [[], [X], [Y]]
 
 --    /\
 --   /__\
 --  /\* /\
 -- /__\/__\
-shape5 = Set.fromList [[], [X], [Y], [Z]]
+shape5 = [[], [X], [Y], [Z]]
 
 --    /\
 --   /__\____
 --  /\* /\  /
 -- /__\/__\/
-shape6 = Set.fromList [[], [X], [Y], [Z], [Z, X]]
+shape6 = [[], [X], [Y], [Z], [Z, X]]
 
 --   ____
 --  /\* /\
 -- /__\/__\
 --     \  /
 --      \/
-shape7 = Set.fromList [[], [X], [Y], [X, Z]]
+shape7 = [[], [X], [Y], [X, Z]]
 
 --   ________
 --  /\* /\  /
 -- /__\/__\/
-shape8 = Set.fromList [[], [X], [Y], [Y, X]]
+shape8 = [[], [X], [Y], [Y, X]]
 
 --   ________
 --  /\  /\  /\
 -- /__\/*_\/__\
-shape9 = Set.fromList [[], [X], [Y], [X, Y], [Y, X]]
+shape9 = [[], [X], [Y], [X, Y], [Y, X]]
 
 --   ____
 --  /\* /\
 -- /__\/__\
 -- \  /\  /
 --  \/  \/
-shape10 = Set.fromList [[], [X], [Y], [X, Z], [Y, Z]]
+shape10 = [[], [X], [Y], [X, Z], [Y, Z]]
 
 --        /\
 --   ____/__\
 --  /\  /\  /
 -- /__\/*_\/
-shape11 = Set.fromList [[], [X], [Y], [Y, X], [X, Z]]
+shape11 = [[], [X], [Y], [Y, X], [X, Z]]
 
 shapes :: [Shape]
 shapes =
@@ -279,56 +282,50 @@ shapes =
   , shape1
   ]
 
-rotateDirection :: Direction -> Direction
-rotateDirection X = Y
-rotateDirection Y = Z
-rotateDirection Z = X
-
-rotatePath :: Path -> Path
-rotatePath = map rotateDirection
+rotate :: Direction -> Direction
+rotate X = Y
+rotate Y = Z
+rotate Z = X
 
 rotateShape :: Shape -> Shape
-rotateShape = Set.map rotatePath
+rotateShape = map (map rotate)
 
-rotations :: Shape -> Set Shape
-rotations = Set.fromList . take 3 . iterate rotateShape
+rotations :: Shape -> [Shape]
+rotations = take 3 . iterate rotateShape
 
-reflectDirection :: Direction -> Direction -> Direction
-reflectDirection X X = X
-reflectDirection X Y = Z
-reflectDirection X Z = Y
-reflectDirection Y X = Z
-reflectDirection Y Y = Y
-reflectDirection Y Z = X
-reflectDirection Z X = Y
-reflectDirection Z Y = X
-reflectDirection Z Z = Z
-
-reflectPath :: Direction -> Path -> Path
-reflectPath d = map (reflectDirection d)
+reflect :: Direction -> Direction -> Direction
+reflect X X = X
+reflect X Y = Z
+reflect X Z = Y
+reflect Y X = Z
+reflect Y Y = Y
+reflect Y Z = X
+reflect Z X = Y
+reflect Z Y = X
+reflect Z Z = Z
 
 reflectShape :: Direction -> Shape -> Shape
-reflectShape d = Set.map (reflectPath d)
+reflectShape = map . map . reflect
 
-reflections :: Shape -> Set Shape
-reflections shape =
-  Set.fromList [reflectShape d shape | d <- [X, Y, Z]]
+reflections :: Shape -> [Shape]
+reflections shape = [reflectShape d shape | d <- [X, Y, Z]]
 
 walk :: Path -> Int -> Maybe Int
 walk [] n = Just n
 walk (d:ds) n = walk ds =<< neighbour d n
 
-place :: Shape -> Set Int -> Set (Set Int)
-place shape grid =
-  Set.fromList $ filter (\s -> s `Set.isSubsetOf` grid) $ catMaybes
-    [ Set.fromList <$> mapM (\path -> walk path n) (Set.toList shape)    | n <- Set.toList grid
-                                                                         ]
+tryPlaceShape :: Set Int -> Int -> Shape -> Maybe (Set Int)
+tryPlaceShape grid n shape =
+  case Set.fromList <$> mapM (\path -> walk path n) shape of
+    Just ns | ns `Set.isSubsetOf` grid -> Just ns
+    _ -> Nothing
 
 placeShape :: Shape -> Set Int -> Set (Set Int)
 placeShape shape grid =
-  Set.unions
-    [ place s grid
-    | s <- Set.toList (rotations shape `Set.union` reflections shape)
+  Set.fromList $ catMaybes
+    [ tryPlaceShape grid n s
+    | n <- Set.toList grid
+    , s <- rotations shape ++ reflections shape
     ]
 
 placeShapes :: [Shape] -> Set Int -> [([Set Int], Set Int)]
@@ -336,21 +333,27 @@ placeShapes [] grid = [([], grid)]
 placeShapes (shape:shapes) grid =
   [ (s:ss, grid')
   | s <- Set.toList (placeShape shape grid)
-  , (ss, grid') <- placeShapes shapes (grid `Set.difference` s)
+  , (ss, grid') <- placeShapes shapes (grid \\ s)
   ]
 
-test = and
-  [ not $ null $ placeShapes shapes grid
-  | n1 <- [1, 5, 15, 34, 44, 48]
-  , n2 <- [10, 27, 31]
-  , n3 <- [18, 22, 39]
-  , n4 <- [21, 28, 19, 20, 29, 30]
-  , n5 <- [38, 40, 45, 47, 36, 37, 25, 26]
-  , n6 <- [2, 4, 7, 8, 9, 11, 16, 17]
-  , n7 <- [12, 13, 23, 24, 32, 33, 41, 42]
-  , let blockers = Set.fromList [n1, n2, n3, n4, n5, n6, n7]
-  , let grid = Set.fromList [1..48] `Set.difference` blockers
-  ]
+fullGrid :: Set Int
+fullGrid = Set.fromList [1..48]
+
+solve :: Set Int -> Maybe [Set Int]
+solve blockers = listToMaybe $ map fst $ placeShapes shapes grid
+  where
+    grid = fullGrid \\ blockers
 
 main :: IO ()
-main = return ()
+main = do
+  args <- getArgs
+  let blockers = Set.fromList $ map read args
+  if Set.size blockers == 7 && blockers `Set.isSubsetOf` fullGrid
+    then case solve blockers of
+           Nothing ->
+             putStrLn "No solution."
+           Just shapes ->
+             putStrLn $ unlines $
+                 "Solution:"
+               : map (unwords . map show . Set.toList) shapes
+    else putStrLn "Invalid input."
